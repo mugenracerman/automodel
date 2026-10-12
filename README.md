@@ -4,13 +4,72 @@ A Claude Code mod that picks the right model at the start of a conversation, the
 
 ## Install
 
-Needs Claude Code 2.1.293 or newer. In a terminal session:
+Works on macOS, Windows and Linux, in the terminal and in the Claude desktop app's Code tab.
+
+### 1. Get Claude Code 2.1.293 or newer
+
+Check your version:
+
+```
+claude --version
+```
+
+If it is older, update it:
+
+```
+claude update
+```
+
+If `claude` is not installed yet, install it first. On macOS or Linux:
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+On Windows (PowerShell):
+
+```
+irm https://claude.ai/install.ps1 | iex
+```
+
+### 2. Install Auto Model
+
+Either type this inside a running `claude` session:
 
 ```
 /plugin install automodel --marketplace mugenracerman/automodel
 ```
 
-Answer `y` to add the marketplace, then pick a scope (user scope loads it in every session).
+Answer `y` to add the marketplace, then choose the **user** scope so it loads in every session.
+
+Or run these two commands from a terminal (Terminal on macOS, PowerShell on Windows), which do the same:
+
+```
+claude plugin marketplace add mugenracerman/automodel
+claude plugin install automodel@automodel --scope user
+```
+
+A user-scope install made from the terminal also loads in the desktop app's Code tab.
+
+### 3. Turn it on
+
+Start a new session and type `/automodel on`, or click **Auto Model: Off** in the status bar. It starts off on every machine; the switch is remembered per machine.
+
+### Update
+
+```
+claude plugin update automodel@automodel
+```
+
+Then start a new session, or run `/reload-plugins` in a running one.
+
+### Uninstall
+
+```
+claude plugin uninstall automodel@automodel
+```
+
+Turn it off first (`/automodel off`) so your next session starts on the model you used before.
 
 ## Use
 
