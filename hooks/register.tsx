@@ -212,6 +212,26 @@ async function runCommand($: Engine, args: string): Promise<string> {
   return 'Use /automodel on, /automodel off, /automodel status or /automodel repick.'
 }
 
+// Damon's Tools (it registers /damons-tools) shows every plugin's switch in its
+// own dashboard and keeps the footer to one button; while it is installed this
+// plugin leaves its footer toggle out. Looked up at most every few seconds.
+let dashboardSeen: { at: number; isThere: boolean } | undefined
+async function hasDashboard($: {
+  clock: { now: () => Promise<number> }
+  command: { list: () => Promise<readonly { name: string }[]> }
+}): Promise<boolean> {
+  // Where the lookup cannot run, keep the toggle.
+  try {
+    const now = await $.clock.now()
+    if (dashboardSeen && now - dashboardSeen.at < 5000) return dashboardSeen.isThere
+    const isThere = (await $.command.list()).some(c => c.name === 'damons-tools')
+    dashboardSeen = { at: now, isThere }
+    return isThere
+  } catch {
+    return false
+  }
+}
+
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
@@ -341,6 +361,7 @@ export const register: Register = on => {
   // The button sits in the footer beside whatever else is drawn there: the
   // engine's mode labels and other mods' buttons all come through `next`.
   on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    if (await hasDashboard($)) return next(e)
     const { Box, Button } = $.ui.resolve(e)
     const isOn = await read($, isOnAtom)
     const theirs = await next(e)
