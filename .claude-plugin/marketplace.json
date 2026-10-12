@@ -1,0 +1,6 @@
+{
+  "name": "automodel",
+  "owner": { "name": "mugenracerman" },
+  "metadata": { "description": "Auto Model: a Claude Code mod that picks the main model once per fresh conversation and keeps it locked to protect the prompt cache." },
+  "plugins": [{ "name": "automodel", "source": "./" }]
+}
