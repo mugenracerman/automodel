@@ -193,6 +193,10 @@ describe('Auto Model in a session', () => {
 
   test('the status bar button reads On and flips with one press', async ($, on) => {
     world(on, () => 'strong')
+    on('ui.render', { component: 'SessionMode' }, ($, e) => {
+      const { Text } = $.ui.resolve(e)
+      return h(Text, {}, 'from beneath')
+    })
     await $.session.start(START)
     for (const surface of ['terminal', 'desktop'] as const) {
       const ui = await $.ui.mount({ plugin: 'automodel', surface, component: 'SessionMode', props: { modes: [] } })
@@ -200,6 +204,7 @@ describe('Auto Model in a session', () => {
       await ui.press({ key: 'automodel-toggle' })
       expect((await ui.find({ key: 'automodel-toggle' }))?.text).toBe('Auto Model: Off')
       await ui.press({ key: 'automodel-toggle' })
+      expect(await ui.find({ text: 'from beneath' })).toBeDefined()
       await ui.unmount()
     }
   })

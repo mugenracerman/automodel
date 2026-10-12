@@ -338,14 +338,16 @@ export const register: Register = on => {
     ($, e, next) => (next.called ? next(e) : { text: 'Auto Model could not do that just now. Try again in a moment.' }),
   )
 
-  on('ui.render', { component: 'SessionMode' }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+  // The button sits in the footer beside whatever else is drawn there: the
+  // engine's mode labels and other mods' buttons all come through `next`.
+  on('ui.render', { component: 'SessionMode' }, async ($, e, next) => {
+    const { Box, Button } = $.ui.resolve(e)
     const isOn = await read($, isOnAtom)
-    const modes = e.props.modes.join(' & ')
+    const theirs = await next(e)
 
     return (
       <Box flexDirection="row" columnGap={1}>
-        {modes !== '' && <Text dimColor wrap="truncate">{modes}</Text>}
+        {theirs}
         <Box backgroundColor={HAIR} paddingX={1}>
           <Button key="automodel-toggle" plain label={`Auto Model: ${isOn ? 'On' : 'Off'}`} onPress={() => toggle($)} />
         </Box>
