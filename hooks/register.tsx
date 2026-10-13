@@ -268,6 +268,8 @@ export const register: Register = on => {
       immediate: true,
     })
     const isOn = (await $.store.get('isOn')) === true
+    // Saved even when unchanged: Damon's Tools reads `isOn` as this plugin's switch.
+    await $.store.set('isOn', isOn)
     await update($, isOnAtom, () => isOn)
     if (!isOn) await restoreModel($)
 

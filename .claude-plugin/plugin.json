@@ -1,6 +1,6 @@
 {
   "name": "automodel",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Auto Model: picks the main model once per fresh conversation, locks it to protect the prompt cache, and hands small self-contained jobs to a helper.",
   "author": { "name": "mugenracerman" },
   "license": "MIT",
