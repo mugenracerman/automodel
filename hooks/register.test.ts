@@ -5,13 +5,25 @@ type World = {
   sorted: string[]
   setModels: string[]
   prompts: { text: string; context?: readonly string[] }[]
+  steps: string[]
   model: () => string
 }
 
-/** The engine beneath the mod: a model picker, a session model, a sorter that answers `answer`. */
-function world(on: On, answer: () => string, store: Record<string, unknown> = { isOn: true }, turns = 0): World {
+/**
+ * The engine beneath the mod: a model picker, a session model, a sorter that answers `answer`.
+ * `isLive` false is a session that keeps its model when the setting changes, as `claude -p` does.
+ * `refused` names the lines the model setting will not take, as on a plan without them.
+ */
+function world(
+  on: On,
+  answer: () => string,
+  store: Record<string, unknown> = { isOn: true },
+  turns = 0,
+  isLive = true,
+  refused: readonly string[] = [],
+): World {
   let current = 'claude-sonnet-5-5'
-  const w: World = { sorted: [], setModels: [], prompts: [], model: () => current }
+  const w: World = { sorted: [], setModels: [], prompts: [], steps: [], model: () => current }
   mock.store(on, store)
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('command.register', () => ({ value: { command: 'automodel' } }))
@@ -35,7 +47,8 @@ function world(on: On, answer: () => string, store: Record<string, unknown> = { 
     ],
   }))
   on('config.set', ($, e) => {
-    current = `claude-${String(e.value)}-5-5`
+    if (refused.includes(String(e.value))) return { deny: 'not on this plan' }
+    if (isLive) current = `claude-${String(e.value)}-5-5`
     w.setModels.push(String(e.value))
     return { value: e.value }
   })
@@ -48,8 +61,15 @@ function world(on: On, answer: () => string, store: Record<string, unknown> = { 
     return { text: e.text, context: e.context }
   })
   on('classic.SessionStart', () => ({}))
+  on('turn.step', async function* ($, e) {
+    w.steps.push(e.model)
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn' as const, usage: null }
+  })
   return w
 }
+
+/** A main-loop model step naming `model`, as the engine resolved it. */
+const step = (model: string, index = 0) => ({ turnId: 'turn-1', index, model, messageCount: 1 })
 
 const USAGE = { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 }
 const START = { cwd: '/tmp', surface: 'terminal' as const, isInteractive: true }
@@ -75,6 +95,50 @@ describe('Auto Model in a session', () => {
     await $.prompt.submit(typed('Refactor the billing module and add tests for it'))
     expect(w.sorted.length).toBe(1)
     expect(w.setModels).toEqual(['opus'])
+  })
+
+  test('a step already on the locked model goes out as the engine named it', async ($, on) => {
+    const w = world(on, () => 'strong')
+    await $.session.start(START)
+    await $.prompt.submit(typed('Refactor the billing module and add tests for it'))
+    for await (const _ of $.turn.step(step('claude-opus-5-5'))) {
+      // the test's engine yields no chunks
+    }
+    expect(w.steps).toEqual(['claude-opus-5-5'])
+  })
+
+  test('a step never names a bare alias, which the API refuses', async ($, on) => {
+    const w = world(on, () => 'small', { isOn: true }, 0, false)
+    await $.session.start(START)
+    await $.prompt.submit(typed('What is the capital of France?'))
+    expect(w.setModels).toEqual(['haiku'])
+    for await (const _ of $.turn.step(step('claude-sonnet-5-5'))) {
+      // the test's engine yields no chunks
+    }
+    expect(w.steps).toEqual(['claude-sonnet-5-5'])
+  })
+
+  test('a step moves to the full id it has seen for the locked line', async ($, on) => {
+    const w = world(on, () => 'small', { isOn: true }, 0, false)
+    await $.session.start(START)
+    for await (const _ of $.turn.step(step('claude-haiku-5-5'))) {
+      // the test's engine yields no chunks
+    }
+    await $.prompt.submit(typed('What is the capital of France?'))
+    for await (const _ of $.turn.step(step('claude-sonnet-5-5', 1))) {
+      // the test's engine yields no chunks
+    }
+    expect(w.steps).toEqual(['claude-haiku-5-5', 'claude-haiku-5-5'])
+  })
+
+  test('a line the plan lacks steps down to the next one the setting takes', async ($, on) => {
+    const w = world(on, () => 'strongest', { isOn: true }, 0, true, ['fable'])
+    await $.session.start(START)
+    await $.prompt.submit(typed('Do deep research comparing every home battery system for hours'))
+    expect(w.setModels).toEqual(['opus'])
+    expect(w.model()).toBe('claude-opus-5-5')
+    const reply = await $.command.run(command('status'))
+    expect(reply.text).toContain('Locked model: Opus')
   })
 
   test('a later prompt that sorts lower keeps the lock and a small job gets the helper note', async ($, on) => {

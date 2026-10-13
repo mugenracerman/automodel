@@ -6,11 +6,15 @@ import {
   bigNumber,
   decide,
   guessLevel,
+  isFullId,
   isShortReply,
   kindOf,
+  learnId,
   lineFor,
+  linesDownFrom,
   linesIn,
   parseLevel,
+  stepModel,
   turnedOff,
 } from './logic'
 
@@ -110,5 +114,35 @@ describe('the model lines', () => {
   test('big numbers are three rows of heavy box drawing', () => {
     expect(bigNumber(10)).toEqual(['━┓  ┏━┓', ' ┃  ┃ ┃', '━┻━ ┗━┛'])
     expect(bigNumber(7).join('')).not.toMatch(/[╸╹╺╻]/)
+  })
+})
+
+describe('stepping down when the setting refuses a line', () => {
+  test('tries the line, then each lower line the install offers', () => {
+    expect(linesDownFrom('fable', ['haiku', 'sonnet', 'opus', 'fable'])).toEqual(['fable', 'opus', 'sonnet', 'haiku'])
+    expect(linesDownFrom('fable', ['haiku', 'opus'])).toEqual(['fable', 'opus', 'haiku'])
+    expect(linesDownFrom('haiku', ['haiku', 'sonnet'])).toEqual(['haiku'])
+  })
+})
+
+describe('naming a model the API takes', () => {
+  test('a full id is one, a bare alias is not', () => {
+    expect(isFullId('claude-haiku-5-5')).toBe(true)
+    expect(isFullId('us.anthropic.claude-opus-4-8')).toBe(true)
+    expect(isFullId('haiku')).toBe(false)
+    expect(isFullId('Opus')).toBe(false)
+  })
+  test('learns a full id once and ignores aliases', () => {
+    const ids = learnId({}, 'claude-haiku-5-5')
+    expect(ids).toEqual({ haiku: 'claude-haiku-5-5' })
+    expect(learnId(ids, 'claude-haiku-5-5')).toBe(ids)
+    expect(learnId(ids, 'sonnet')).toBe(ids)
+  })
+  test('a step moves only to a known full id, never to the alias', () => {
+    const ids = { haiku: 'claude-haiku-5-5' }
+    expect(stepModel('claude-opus-5-5', 'haiku', ids)).toBe('claude-haiku-5-5')
+    expect(stepModel('claude-opus-5-5', 'sonnet', ids)).toBe(undefined)
+    expect(stepModel('claude-haiku-5-5', 'haiku', ids)).toBe(undefined)
+    expect(stepModel('claude-opus-5-5', null, ids)).toBe(undefined)
   })
 })

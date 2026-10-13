@@ -97,6 +97,40 @@ export function lineFor(level: Level, lines: readonly string[]): string | undefi
   return ordered[0]
 }
 
+/** The full model ids seen for each line (`opus` → `claude-opus-5-5`), learned from the engine. */
+export type KnownIds = Readonly<Record<string, string>>
+
+/** True for an id the API takes, as against a bare alias (`haiku`) that it rejects. */
+export function isFullId(model: string): boolean {
+  return !LINE_ORDER.includes(model.trim().toLowerCase()) && linesIn([model]).length === 1
+}
+
+/** Adds the line `model` serves to `ids` when it is a full id not known yet; the same object otherwise. */
+export function learnId(ids: KnownIds, model: string): KnownIds {
+  const line = linesIn([model])[0]
+  if (line === undefined || !isFullId(model) || ids[line] === model) return ids
+  return { ...ids, [line]: model }
+}
+
+/**
+ * The model a main-loop step should name to stay on `line`: undefined when it
+ * already does, or when no full id is known for the line yet. Never a bare
+ * alias, which a turn step sends to the API as it is.
+ */
+export function stepModel(model: string, line: string | null, ids: KnownIds): string | undefined {
+  if (line === null || model.toLowerCase().includes(line)) return undefined
+  return ids[line]
+}
+
+/**
+ * `line` and the lines below it that `lines` offers, most capable first: the
+ * order to try them in when the model setting refuses one (a plan without Fable).
+ */
+export function linesDownFrom(line: string, lines: readonly string[]): string[] {
+  const at = LINE_ORDER.indexOf(line)
+  return LINE_ORDER.slice(0, at + 1).filter(l => l === line || lines.includes(l)).reverse()
+}
+
 /** The level a line serves, for a lock read back. */
 export function levelOfLine(line: string): Level {
   const at = LINE_ORDER.indexOf(line)

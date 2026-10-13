@@ -12,14 +12,18 @@ import {
   helperNote,
   isShortReply,
   kindOf,
+  learnId,
   letGo,
   levelOfLine,
   lineFor,
+  linesDownFrom,
   linesIn,
   parseLevel,
+  stepModel,
   title,
   turnedOff,
 } from './logic'
+import type { KnownIds } from './logic'
 
 type Engine = EngineInterface
 
@@ -84,23 +88,46 @@ export async function sortPrompt($: Engine, text: string, lines: readonly string
   return guessLevel(text)
 }
 
-/** Puts the main conversation on `line`, without a word in the chat. */
-async function setMain($: Engine, line: string, level: Level) {
+/**
+ * Puts the main conversation on `wanted`, without a word in the chat. When the
+ * model setting refuses it (a plan without that line), the next line down that
+ * the setting takes is the one locked.
+ */
+async function setMain($: Engine, wanted: string, level: Level, lines: readonly string[]) {
   const row = await modelRow($)
+  let line = wanted
   let isViaConfig = false
   if (row !== undefined) {
-    const option = row.options?.find(o => o.toLowerCase().includes(line)) ?? line
-    try {
-      const done = await $.config.set({ key: 'model', value: option })
-      isViaConfig = done.deny === undefined
-    } catch {
-      isViaConfig = false
+    for (const candidate of linesDownFrom(wanted, lines)) {
+      const option = row.options?.find(o => o.toLowerCase().includes(candidate)) ?? candidate
+      try {
+        const done = await $.config.set({ key: 'model', value: option })
+        isViaConfig = done.deny === undefined
+      } catch {
+        isViaConfig = false
+      }
+      if (isViaConfig) {
+        line = candidate
+        break
+      }
     }
   }
   const seenModel = await $.session.model()
+  await learnModel($, seenModel)
   await update($, lockAtom, lock => ({ ...lock, line, level, isFresh: false, seenModel, pendingHelper: null }))
   $.ui.status(isViaConfig ? undefined : `Model: ${title(line)}`)
   await rememberLock($, line, level)
+}
+
+async function knownIds($: Engine): Promise<KnownIds> {
+  return ((await $.store.get('ids')) ?? {}) as KnownIds
+}
+
+/** Remembers the full id behind a model the engine named, so a step can name it later. */
+async function learnModel($: Engine, model: string) {
+  const ids = await knownIds($)
+  const learned = learnId(ids, model)
+  if (learned !== ids) await $.store.set('ids', learned)
 }
 
 async function rememberLock($: Engine, line: string, level: Level) {
@@ -304,7 +331,7 @@ export const register: Register = on => {
 
     if (decision.kind === 'set') {
       const line = lineFor(decision.level, lines)
-      if (line !== undefined) await setMain($, line, decision.level)
+      if (line !== undefined) await setMain($, line, decision.level, lines)
       return next(e)
     }
     if (decision.kind === 'note') {
@@ -321,11 +348,14 @@ export const register: Register = on => {
 
   on('turn.step', async function* ($, e, next) {
     if (e.agentId !== undefined) return yield* next(e)
+    await learnModel($, e.model)
     const lock = await read($, lockAtom)
     const isHeld = lock.isPinned || (await read($, isOnAtom))
-    if (!isHeld || lock.line === null || e.model.toLowerCase().includes(lock.line)) return yield* next(e)
+    // A step's model goes to the API as written, so it must be a full id:
+    // a bare alias (`haiku`) is refused with a 404.
+    const model = isHeld ? stepModel(e.model, lock.line, await knownIds($)) : undefined
 
-    return yield* next({ ...e, model: lock.line })
+    return yield* next(model === undefined ? e : { ...e, model })
   })
 
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
